@@ -17,8 +17,181 @@ big_font = pygame.font.SysFont(None, 60)
 
 
 # ==================================================
+# Door
+# ==================================================
+
+# ==================================================
+# Door
+# ==================================================
+
+class Door:
+
+    def __init__(self, x, y):
+
+        self.x = x
+        self.y = y
+
+        self.width = 50
+        self.height = 80
+
+        self.closed_image = pygame.image.load(
+            "door.png"
+        ).convert_alpha()
+
+        self.open_image = pygame.image.load(
+            "opendoor.png"
+        ).convert_alpha()
+
+        self.closed_image = pygame.transform.scale(
+            self.closed_image,
+            (self.width, self.height)
+        )
+
+        self.open_image = pygame.transform.scale(
+            self.open_image,
+            (self.width, self.height)
+        )
+
+        self.open = False
+
+    def draw(self):
+
+        if self.open:
+            image = self.open_image
+        else:
+            image = self.closed_image
+
+        rect = image.get_rect(
+            center=(self.x, self.y)
+        )
+
+        screen.blit(
+            image,
+            rect
+        )
+
+    def is_player_touching(self, player):
+
+        door_rect = pygame.Rect(
+            self.x - self.width // 2,
+            self.y - self.height // 2,
+            self.width,
+            self.height
+        )
+
+        player_rect = pygame.Rect(
+            player.x - player.radius,
+            player.y - player.radius,
+            player.radius * 2,
+            player.radius * 2
+        )
+
+        return door_rect.colliderect(player_rect)
+
+# ==================================================
 # Gun
 # ==================================================
+
+class Room:
+
+    def __init__(self, room_number, wave):
+
+        self.door = Door(
+                    WIDTH - 30,
+                    HEIGHT // 2
+                )
+
+        self.room_number = room_number
+        self.wave = wave
+
+        self.monsters = []
+
+        self.started = False
+        self.cleared = False
+
+    def start(self):
+
+        if self.started:
+            return
+
+        self.started = True
+
+        zombie_count = 4 + self.wave
+
+        for i in range(zombie_count):
+
+            if self.wave % 5 == 0 and i == 0:
+
+                zombie_type = "boss"
+
+            else:
+
+                random_number = random.randint(1, 100)
+
+                if self.wave < 3:
+
+                    if random_number <= 75:
+                        zombie_type = "normal"
+                    else:
+                        zombie_type = "speed"
+
+                elif self.wave < 5:
+
+                    if random_number <= 55:
+                        zombie_type = "normal"
+
+                    elif random_number <= 80:
+                        zombie_type = "speed"
+
+                    else:
+                        zombie_type = "tank"
+
+                else:
+
+                    if random_number <= 40:
+                        zombie_type = "normal"
+
+                    elif random_number <= 65:
+                        zombie_type = "speed"
+
+                    else:
+                        zombie_type = "tank"
+
+            self.monsters.append(
+                Zombie(
+                    self.wave,
+                    zombie_type
+                )
+            )
+
+    def update(self, player):
+
+        if not self.started:
+            self.start()
+
+        if self.cleared:
+            return
+
+        for monster in self.monsters:
+            monster.update(player)
+
+        self.monsters = [
+            monster
+            for monster in self.monsters
+            if not monster.dead
+        ]
+
+        if len(self.monsters) == 0:
+
+            self.cleared = True
+            self.door.open = True
+
+    def draw(self):
+
+        for monster in self.monsters:
+            monster.draw()
+            monster.draw_health_bar()
+        self.door.draw()
 
 class Gun:
 
@@ -32,6 +205,8 @@ class Gun:
             self.image,
             (30, 15)
         )
+
+        
 
         self.image = pygame.transform.flip(
             self.image,
@@ -593,184 +768,22 @@ class Game:
         self.player = Player()
 
         self.bullets = []
-        self.zombies = []
 
         self.wave = 1
 
         self.coins = 0
 
+        self.room = Room(
+            room_number=0,
+            wave=self.wave
+        )
+
         self.shop_open = False
+
         self.game_over = False
 
-        self.spawn_wave()
-
     # ==================================================
-    # Spawn Wave
-    # ==================================================
-
-    def spawn_wave(self):
-
-        self.zombies.clear()
-
-        zombie_count = 4 + self.wave
-
-        for i in range(zombie_count):
-
-            # 5웨이브마다 첫 번째가 보스
-            if self.wave % 5 == 0 and i == 0:
-
-                zombie_type = "boss"
-
-            else:
-
-                random_number = random.randint(
-                    1,
-                    100
-                )
-
-                if self.wave < 3:
-
-                    if random_number <= 75:
-                        zombie_type = "normal"
-
-                    else:
-                        zombie_type = "speed"
-
-                elif self.wave < 5:
-
-                    if random_number <= 55:
-                        zombie_type = "normal"
-
-                    elif random_number <= 80:
-                        zombie_type = "speed"
-
-                    else:
-                        zombie_type = "tank"
-
-                else:
-
-                    if random_number <= 40:
-                        zombie_type = "normal"
-
-                    elif random_number <= 65:
-                        zombie_type = "speed"
-
-                    else:
-                        zombie_type = "tank"
-
-            self.zombies.append(
-                Zombie(
-                    self.wave,
-                    zombie_type
-                )
-            )
-
-    # ==================================================
-    # Events
-    # ==================================================
-
-    def events(self):
-
-        for event in pygame.event.get():
-
-            if event.type == pygame.QUIT:
-
-                return False
-
-            # ==================================================
-            # 공격
-            # ==================================================
-
-            if event.type == pygame.MOUSEBUTTONDOWN:
-
-                if event.button == 1:
-
-                    if not self.game_over:
-
-                        if not self.shop_open:
-
-                            mx, my = pygame.mouse.get_pos()
-
-                            bullet = self.player.shoot(
-                                mx,
-                                my
-                            )
-
-                            if bullet:
-
-                                self.bullets.append(
-                                    bullet
-                                )
-
-            # ==================================================
-            # 키
-            # ==================================================
-
-            if event.type == pygame.KEYDOWN:
-
-                # 상점
-                if event.key == pygame.K_b:
-
-                    if not self.game_over:
-
-                        self.shop_open = not self.shop_open
-
-                # 상점
-                if self.shop_open:
-
-                    # 공격력
-                    if event.key == pygame.K_1:
-
-                        if self.coins >= 20:
-
-                            self.coins -= 20
-                            self.player.damage += 5
-
-                    # 이동속도
-                    elif event.key == pygame.K_2:
-
-                        if self.coins >= 25:
-
-                            self.coins -= 25
-                            self.player.speed += 1
-
-                    # 회복
-                    elif event.key == pygame.K_3:
-
-                        if self.coins >= 15:
-
-                            if self.player.hp < self.player.max_hp:
-
-                                self.coins -= 15
-
-                                self.player.hp += 30
-
-                                if self.player.hp > self.player.max_hp:
-
-                                    self.player.hp = self.player.max_hp
-
-                    # 공격속도
-                    elif event.key == pygame.K_4:
-
-                        if self.coins >= 30:
-
-                            if self.player.fire_cooldown > 2:
-
-                                self.coins -= 30
-
-                                self.player.fire_cooldown -= 2
-
-                # 재시작
-                if event.key == pygame.K_r:
-
-                    if self.game_over:
-
-                        self.__init__()
-
-        return True
-
-    # ==================================================
-    # Update
+    # Game Update
     # ==================================================
 
     def update(self):
@@ -778,21 +791,21 @@ class Game:
         if self.game_over:
             return
 
-        # 상점에서는 게임 정지
-        if self.shop_open:
-            return
+        # --------------------------------------------------
+        # Player
+        # --------------------------------------------------
 
         self.player.update()
 
-        # ==================================================
-        # 총알
-        # ==================================================
+        # --------------------------------------------------
+        # Bullets
+        # --------------------------------------------------
 
         for bullet in self.bullets[:]:
 
             bullet.update()
 
-            # 화면 밖
+            # 화면 밖으로 나가면 삭제
             if (
                 bullet.x < 0 or
                 bullet.x > WIDTH or
@@ -800,98 +813,70 @@ class Game:
                 bullet.y > HEIGHT
             ):
 
-                self.bullets.remove(
-                    bullet
-                )
+                self.bullets.remove(bullet)
 
-        # ==================================================
-        # 좀비
-        # ==================================================
+                continue
 
-        for zombie in self.zombies:
-
-            zombie.update(
-                self.player
-            )
-
-        # ==================================================
-        # 총알과 좀비 충돌
-        # ==================================================
-
-        for bullet in self.bullets[:]:
-
-            for zombie in self.zombies[:]:
+            # 현재 Room의 몬스터와 충돌
+            for monster in self.room.monsters:
 
                 distance = math.hypot(
-                    bullet.x - zombie.x,
-                    bullet.y - zombie.y
+                    bullet.x - monster.x,
+                    bullet.y - monster.y
                 )
 
-                if distance < (
-                    bullet.radius +
-                    zombie.radius
-                ):
+                if distance < bullet.radius + monster.radius:
 
-                    zombie.take_damage(
+                    monster.take_damage(
                         bullet.damage
                     )
 
                     if bullet in self.bullets:
+                        self.bullets.remove(bullet)
 
-                        self.bullets.remove(
-                            bullet
-                        )
+                    # 죽었으면 코인 지급
+                    if monster.dead:
 
-                    # 사망
-                    if zombie.dead:
-
-                        if zombie in self.zombies:
-
-                            self.zombies.remove(
-                                zombie
-                            )
-
-                            self.coins += (
-                                zombie.coin_reward
-                            )
+                        self.coins += monster.coin_reward
 
                     break
 
-        # ==================================================
-        # 좀비와 플레이어
-        # ==================================================
+        # --------------------------------------------------
+        # Room
+        # --------------------------------------------------
 
-        for zombie in self.zombies:
+        self.room.update(
+            self.player
+        )
 
-            distance = math.hypot(
-                zombie.x - self.player.x,
-                zombie.y - self.player.y
-            )
+        # --------------------------------------------------
+        # Game Over
+        # --------------------------------------------------
 
-            if distance < (
-                zombie.radius +
-                self.player.radius
-            ):
+        if self.player.hp <= 0:
 
-                self.player.hp -= zombie.damage
+            self.player.hp = 0
 
-                if self.player.hp <= 0:
-
-                    self.player.hp = 0
-
-                    self.game_over = True
+            self.game_over = True
 
         # ==================================================
-        # 웨이브 클리어
+        # Room Clear
         # ==================================================
 
-        if len(self.zombies) == 0:
+        if self.room.cleared:
 
-            self.wave += 1
+            if self.room.door.is_player_touching(self.player):
 
-            self.coins += 10
+                self.wave += 1
 
-            self.spawn_wave()
+                self.room = Room(
+                    room_number=self.room.room_number + 1,
+                    wave=self.wave
+                )
+
+                # 새 방의 입구에서 시작
+                self.player.x = 100
+                self.player.y = HEIGHT // 2
 
     # ==================================================
     # Draw
@@ -903,230 +888,339 @@ class Game:
             (25, 25, 25)
         )
 
-        # 플레이어
-        self.player.draw()
-        self.player.draw_health_bar()
+        # --------------------------------------------------
+        # Room
+        # --------------------------------------------------
 
-        # 총알
+        self.room.draw()
+
+        # --------------------------------------------------
+        # Bullets
+        # --------------------------------------------------
+
         for bullet in self.bullets:
-
             bullet.draw()
 
-        # 좀비
-        for zombie in self.zombies:
+        # --------------------------------------------------
+        # Player
+        # --------------------------------------------------
 
-            zombie.draw()
-            zombie.draw_health_bar()
+        self.player.draw()
 
-        # ==================================================
+        self.player.draw_health_bar()
+
+        # --------------------------------------------------
         # UI
-        # ==================================================
+        # --------------------------------------------------
 
-        hp_text = font.render(
-            f"HP: {self.player.hp}/{self.player.max_hp}",
+        coin_text = font.render(
+            f"Coins: {self.coins}",
             True,
-            (255, 255, 255)
-        )
-
-        screen.blit(
-            hp_text,
-            (20, 20)
+            (255, 215, 0)
         )
 
         wave_text = font.render(
-            f"WAVE: {self.wave}",
+            f"Room: {self.room.room_number + 1}",
             True,
             (255, 255, 255)
-        )
-
-        screen.blit(
-            wave_text,
-            (20, 55)
-        )
-
-        zombie_text = font.render(
-            f"ZOMBIES: {len(self.zombies)}",
-            True,
-            (255, 255, 255)
-        )
-
-        screen.blit(
-            zombie_text,
-            (20, 90)
-        )
-
-        coin_text = font.render(
-            f"COINS: {self.coins}",
-            True,
-            (255, 220, 50)
         )
 
         screen.blit(
             coin_text,
-            (20, 125)
+            (10, 10)
         )
 
-        # ==================================================
-        # 좀비 종류
-        # ==================================================
+        screen.blit(
+            wave_text,
+            (10, 40)
+        )
 
-        legend = [
-            ("NORMAL", (60, 200, 70)),
-            ("SPEED", (255, 220, 50)),
-            ("TANK", (220, 60, 60)),
-            ("BOSS", (170, 50, 220))
-        ]
+        # --------------------------------------------------
+        # Controls
+        # --------------------------------------------------
 
-        y = 20
+        control_text = font.render(
+            "WASD: Move   Mouse: Shoot   B: Shop",
+            True,
+            (200, 200, 200)
+        )
 
-        for name, color in legend:
+        screen.blit(
+            control_text,
+            (10, HEIGHT - 30)
+        )
 
-            pygame.draw.circle(
-                screen,
-                color,
-                (760, y + 8),
-                7
-            )
-
-            text = font.render(
-                name,
-                True,
-                (255, 255, 255)
-            )
-
-            screen.blit(
-                text,
-                (775, y)
-            )
-
-            y += 30
-
-        # ==================================================
-        # SHOP
-        # ==================================================
+        # --------------------------------------------------
+        # Shop
+        # --------------------------------------------------
 
         if self.shop_open:
 
-            overlay = pygame.Surface(
-                (WIDTH, HEIGHT)
-            )
+            self.draw_shop()
 
-            overlay.set_alpha(220)
-            overlay.fill(
-                (20, 20, 20)
-            )
-
-            screen.blit(
-                overlay,
-                (0, 0)
-            )
-
-            title = big_font.render(
-                "SHOP",
-                True,
-                (255, 255, 255)
-            )
-
-            screen.blit(
-                title,
-                (380, 100)
-            )
-
-            shop1 = font.render(
-                "1 - Damage +5     20 Coins",
-                True,
-                (255, 255, 255)
-            )
-
-            screen.blit(
-                shop1,
-                (280, 200)
-            )
-
-            shop2 = font.render(
-                "2 - Speed +1       25 Coins",
-                True,
-                (255, 255, 255)
-            )
-
-            screen.blit(
-                shop2,
-                (280, 250)
-            )
-
-            shop3 = font.render(
-                "3 - Heal +30        15 Coins",
-                True,
-                (255, 255, 255)
-            )
-
-            screen.blit(
-                shop3,
-                (280, 300)
-            )
-
-            shop4 = font.render(
-                "4 - Fire Rate Up    30 Coins",
-                True,
-                (255, 255, 255)
-            )
-
-            screen.blit(
-                shop4,
-                (280, 350)
-            )
-
-            coins = font.render(
-                f"Your Coins: {self.coins}",
-                True,
-                (255, 220, 50)
-            )
-
-            screen.blit(
-                coins,
-                (350, 420)
-            )
-
-            close = font.render(
-                "Press B to close",
-                True,
-                (200, 200, 200)
-            )
-
-            screen.blit(
-                close,
-                (365, 470)
-            )
-
-        # ==================================================
-        # GAME OVER
-        # ==================================================
+        # --------------------------------------------------
+        # Game Over
+        # --------------------------------------------------
 
         if self.game_over:
 
-            text = big_font.render(
+            game_over_text = big_font.render(
                 "GAME OVER",
                 True,
-                (255, 50, 50)
+                (255, 80, 80)
             )
 
-            screen.blit(
-                text,
-                (330, 250)
-            )
-
-            restart = font.render(
-                "Press R to Restart",
+            restart_text = font.render(
+                "Press R to restart",
                 True,
                 (255, 255, 255)
             )
 
             screen.blit(
-                restart,
-                (360, 320)
+                game_over_text,
+                game_over_text.get_rect(
+                    center=(WIDTH // 2, HEIGHT // 2 - 30)
+                )
             )
 
-        pygame.display.flip()
+            screen.blit(
+                restart_text,
+                restart_text.get_rect(
+                    center=(WIDTH // 2, HEIGHT // 2 + 30)
+                )
+            )
+
+    # ==================================================
+    # Shop
+    # ==================================================
+
+    def draw_shop(self):
+
+        shop_rect = pygame.Rect(
+            200,
+            100,
+            500,
+            400
+        )
+
+        pygame.draw.rect(
+            screen,
+            (40, 40, 40),
+            shop_rect
+        )
+
+        pygame.draw.rect(
+            screen,
+            (150, 150, 150),
+            shop_rect,
+            3
+        )
+
+        title = big_font.render(
+            "SHOP",
+            True,
+            (255, 255, 255)
+        )
+
+        screen.blit(
+            title,
+            (370, 120)
+        )
+
+        items = [
+            "1. Damage +5       20 Coins",
+            "2. Speed +1         25 Coins",
+            "3. Heal +30         15 Coins",
+            "4. Fire Rate        30 Coins"
+        ]
+
+        for i, text in enumerate(items):
+
+            item_text = font.render(
+                text,
+                True,
+                (255, 255, 255)
+            )
+
+            screen.blit(
+                item_text,
+                (250, 200 + i * 50)
+            )
+
+    # ==================================================
+    # Event
+    # ==================================================
+
+    def handle_event(self, event):
+
+        # --------------------------------------------------
+        # Mouse
+        # --------------------------------------------------
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+
+            if event.button == 1:
+
+                if not self.game_over:
+
+                    mx, my = pygame.mouse.get_pos()
+
+                    bullet = self.player.shoot(
+                        mx,
+                        my
+                    )
+
+                    if bullet is not None:
+
+                        self.bullets.append(
+                            bullet
+                        )
+
+        # --------------------------------------------------
+        # Keyboard
+        # --------------------------------------------------
+
+        if event.type == pygame.KEYDOWN:
+
+            # Shop
+            if event.key == pygame.K_b:
+
+                if not self.game_over:
+
+                    self.shop_open = not self.shop_open
+
+            # Restart
+            if event.key == pygame.K_r:
+
+                if self.game_over:
+
+                    self.__init__()
+
+            # Shop items
+            if self.shop_open:
+
+                # Damage
+                if event.key == pygame.K_1:
+
+                    if self.coins >= 20:
+
+                        self.coins -= 20
+
+                        self.player.damage += 5
+
+                # Speed
+                elif event.key == pygame.K_2:
+
+                    if self.coins >= 25:
+
+                        self.coins -= 25
+
+                        self.player.speed += 1
+
+                # Heal
+                elif event.key == pygame.K_3:
+
+                    if self.coins >= 15:
+
+                        self.coins -= 15
+
+                        self.player.hp += 30
+
+                        if self.player.hp > self.player.max_hp:
+
+                            self.player.hp = self.player.max_hp
+
+                # Fire rate
+                elif event.key == pygame.K_4:
+
+                    if self.coins >= 30:
+
+                        self.coins -= 30
+
+                        self.player.fire_cooldown -= 2
+
+                        if self.player.fire_cooldown < 2:
+
+                            self.player.fire_cooldown = 2
+    def events(self):
+
+        for event in pygame.event.get():
+
+            # 창 닫기
+            if event.type == pygame.QUIT:
+                return False
+
+            # 마우스 클릭
+            if event.type == pygame.MOUSEBUTTONDOWN:
+
+                if event.button == 1:
+
+                    if not self.game_over and not self.shop_open:
+
+                        mx, my = pygame.mouse.get_pos()
+
+                        bullet = self.player.shoot(mx, my)
+
+                        if bullet is not None:
+                            self.bullets.append(bullet)
+
+            # 키보드
+            if event.type == pygame.KEYDOWN:
+
+                # 상점 열기 / 닫기
+                if event.key == pygame.K_b:
+
+                    if not self.game_over:
+                        self.shop_open = not self.shop_open
+
+                # 게임 오버 후 재시작
+                if event.key == pygame.K_r:
+
+                    if self.game_over:
+                        self.__init__()
+
+                # 상점
+                if self.shop_open:
+
+                    # Damage +5
+                    if event.key == pygame.K_1:
+
+                        if self.coins >= 20:
+
+                            self.coins -= 20
+                            self.player.damage += 5
+
+                    # Speed +1
+                    elif event.key == pygame.K_2:
+
+                        if self.coins >= 25:
+
+                            self.coins -= 25
+                            self.player.speed += 1
+
+                    # Heal +30
+                    elif event.key == pygame.K_3:
+
+                        if self.coins >= 15:
+
+                            self.coins -= 15
+                            self.player.hp += 30
+
+                            if self.player.hp > self.player.max_hp:
+                                self.player.hp = self.player.max_hp
+
+                    # Fire cooldown -2
+                    elif event.key == pygame.K_4:
+
+                        if self.coins >= 30:
+
+                            self.coins -= 30
+                            self.player.fire_cooldown -= 2
+
+                            if self.player.fire_cooldown < 2:
+                                self.player.fire_cooldown = 2
+
+        return True
 
 
 # ==================================================
@@ -1144,6 +1238,8 @@ while running:
     game.update()
 
     game.draw()
+
+    pygame.display.flip()
 
     clock.tick(60)
 
