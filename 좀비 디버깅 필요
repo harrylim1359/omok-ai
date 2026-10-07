@@ -1,0 +1,1507 @@
+import pygame
+import random
+import math
+
+pygame.init()
+
+# =========================================================
+# 기본 설정
+# =========================================================
+
+WIDTH = 900
+HEIGHT = 600
+
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Zombie Wave - OOP")
+
+clock = pygame.time.Clock()
+
+font = pygame.font.SysFont(None, 28)
+big_font = pygame.font.SysFont(None, 55)
+
+# =========================================================
+# 색상
+# =========================================================
+
+WHITE = (255, 255, 255)
+BLACK = (20, 20, 20)
+
+BLUE = (50, 150, 255)
+YELLOW = (255, 230, 50)
+
+GREEN = (60, 200, 70)
+RED = (220, 50, 50)
+
+GRAY = (100, 100, 100)
+DARK_GRAY = (50, 50, 50)
+
+ORANGE = (255, 150, 30)
+
+# =========================================================
+# 유틸
+# =========================================================
+
+def circle_rect_collision(x, y, radius, rect):
+    closest_x = max(rect.left, min(x, rect.right))
+    closest_y = max(rect.top, min(y, rect.bottom))
+
+    distance = math.hypot(
+        x - closest_x,
+        y - closest_y
+    )
+
+    return distance < radius
+
+
+def can_move(x, y, radius, obstacles):
+    # 화면 밖
+    if x - radius < 0:
+        return False
+
+    if x + radius > WIDTH:
+        return False
+
+    if y - radius < 0:
+        return False
+
+    if y + radius > HEIGHT:
+        return False
+
+    # 장애물
+    for obstacle in obstacles:
+        if circle_rect_collision(
+            x,
+            y,
+            radius,
+            obstacle.rect
+        ):
+            return False
+
+    return True
+
+
+# =========================================================
+# 파티클
+# =========================================================
+
+class Particle:
+
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+
+        angle = random.uniform(0, math.pi * 2)
+        speed = random.uniform(1, 4)
+
+        self.dx = math.cos(angle) * speed
+        self.dy = math.sin(angle) * speed
+
+        self.life = random.randint(15, 30)
+
+        self.color = color
+        self.radius = random.randint(2, 4)
+
+    def update(self):
+        self.x += self.dx
+        self.y += self.dy
+
+        self.life -= 1
+
+    def draw(self):
+        if self.life > 0:
+
+            pygame.draw.circle(
+                screen,
+                self.color,
+                (int(self.x), int(self.y)),
+                self.radius
+            )
+
+
+class ParticleManager:
+
+    def __init__(self):
+        self.particles = []
+
+    def create(self, x, y, color, amount=8):
+
+        for _ in range(amount):
+            self.particles.append(
+                Particle(x, y, color)
+            )
+
+    def update(self):
+
+        for particle in self.particles:
+            particle.update()
+
+        self.particles = [
+            p for p in self.particles
+            if p.life > 0
+        ]
+
+    def draw(self):
+
+        for particle in self.particles:
+            particle.draw()
+
+
+# =========================================================
+# 장애물
+# =========================================================
+
+class Obstacle:
+
+    def __init__(self, x, y, width, height):
+
+        self.rect = pygame.Rect(
+            x,
+            y,
+            width,
+            height
+        )
+
+    def draw(self):
+
+        pygame.draw.rect(
+            screen,
+            GRAY,
+            self.rect
+        )
+
+        pygame.draw.rect(
+            screen,
+            DARK_GRAY,
+            self.rect,
+            3
+        )
+
+
+# =========================================================
+# 총알
+# =========================================================
+
+class Bullet:
+
+    def __init__(
+        self,
+        x,
+        y,
+        dx,
+        dy,
+        damage
+    ):
+
+        self.x = x
+        self.y = y
+
+        self.dx = dx
+        self.dy = dy
+
+        self.speed = 12
+
+        self.radius = 5
+
+        self.damage = damage
+
+    def update(self):
+
+        self.x += self.dx * self.speed
+        self.y += self.dy * self.speed
+
+    def draw(self):
+
+        pygame.draw.circle(
+            screen,
+            YELLOW,
+            (int(self.x), int(self.y)),
+            self.radius
+        )
+
+    def is_outside(self):
+
+        return (
+            self.x < 0 or
+            self.x > WIDTH or
+            self.y < 0 or
+            self.y > HEIGHT
+        )
+
+
+# =========================================================
+# 플레이어
+# =========================================================
+
+class Player:
+
+    def __init__(self, obstacles):
+
+        self.x = WIDTH // 2
+        self.y = HEIGHT // 2
+
+        self.radius = 20
+
+        self.speed = 5
+
+        self.max_hp = 100
+        self.hp = 100
+
+        # 공격력
+        self.damage = 15
+
+        # 공격 쿨다운
+        self.shoot_cooldown = 0
+
+        self.shoot_delay = 10
+
+        self.obstacles = obstacles
+
+    # -----------------------------------------------------
+
+    def move(self):
+
+        keys = pygame.key.get_pressed()
+
+        dx = 0
+        dy = 0
+
+        if keys[pygame.K_w]:
+            dy -= self.speed
+
+        if keys[pygame.K_s]:
+            dy += self.speed
+
+        if keys[pygame.K_a]:
+            dx -= self.speed
+
+        if keys[pygame.K_d]:
+            dx += self.speed
+
+        # 대각선 속도 보정
+        if dx != 0 and dy != 0:
+
+            dx *= 0.707
+            dy *= 0.707
+
+        # X 이동
+        new_x = self.x + dx
+
+        if can_move(
+            new_x,
+            self.y,
+            self.radius,
+            self.obstacles
+        ):
+            self.x = new_x
+
+        # Y 이동
+        new_y = self.y + dy
+
+        if can_move(
+            self.x,
+            new_y,
+            self.radius,
+            self.obstacles
+        ):
+            self.y = new_y
+
+    # -----------------------------------------------------
+
+    def update(self):
+
+        self.move()
+
+        if self.shoot_cooldown > 0:
+            self.shoot_cooldown -= 1
+
+    # -----------------------------------------------------
+
+    def shoot(self, mouse_x, mouse_y):
+
+        if self.shoot_cooldown > 0:
+            return None
+
+        dx = mouse_x - self.x
+        dy = mouse_y - self.y
+
+        distance = math.hypot(dx, dy)
+
+        if distance == 0:
+            return None
+
+        dx /= distance
+        dy /= distance
+
+        self.shoot_cooldown = self.shoot_delay
+
+        return Bullet(
+            self.x,
+            self.y,
+            dx,
+            dy,
+            self.damage
+        )
+
+    # -----------------------------------------------------
+
+    def draw(self):
+
+        pygame.draw.circle(
+            screen,
+            BLUE,
+            (int(self.x), int(self.y)),
+            self.radius
+        )
+
+        # 체력바
+
+        bar_width = 50
+
+        pygame.draw.rect(
+            screen,
+            RED,
+            (
+                self.x - bar_width // 2,
+                self.y - 35,
+                bar_width,
+                6
+            )
+        )
+
+        pygame.draw.rect(
+            screen,
+            GREEN,
+            (
+                self.x - bar_width // 2,
+                self.y - 35,
+                bar_width * max(
+                    self.hp / self.max_hp,
+                    0
+                ),
+                6
+            )
+        )
+
+
+# =========================================================
+# 좀비
+# =========================================================
+
+class Zombie:
+
+    def __init__(
+        self,
+        x,
+        y,
+        speed,
+        hp=30,
+        damage=1,
+        radius=18,
+        color=GREEN
+    ):
+
+        self.x = x
+        self.y = y
+
+        self.radius = radius
+
+        self.speed = speed
+
+        self.max_hp = hp
+        self.hp = hp
+
+        self.damage = damage
+
+        self.color = color
+
+    # -----------------------------------------------------
+
+    def try_move(self, dx, dy, obstacles):
+
+        # X와 Y를 따로 움직여서
+        # 장애물 모서리를 돌아갈 수 있게 함
+
+        new_x = self.x + dx
+
+        if can_move(
+            new_x,
+            self.y,
+            self.radius,
+            obstacles
+        ):
+            self.x = new_x
+
+        new_y = self.y + dy
+
+        if can_move(
+            self.x,
+            new_y,
+            self.radius,
+            obstacles
+        ):
+            self.y = new_y
+
+    # -----------------------------------------------------
+
+    def update(
+        self,
+        player,
+        obstacles
+    ):
+
+        dx = player.x - self.x
+        dy = player.y - self.y
+
+        distance = math.hypot(dx, dy)
+
+        if distance == 0:
+            return
+
+        dx /= distance
+        dy /= distance
+
+        move_x = dx * self.speed
+        move_y = dy * self.speed
+
+        old_x = self.x
+        old_y = self.y
+
+        # 먼저 플레이어 방향으로 이동
+        self.try_move(
+            move_x,
+            move_y,
+            obstacles
+        )
+
+        # 거의 움직이지 못했다면
+        # 옆 방향으로 돌아가기
+        if (
+            abs(self.x - old_x) < 0.01 and
+            abs(self.y - old_y) < 0.01
+        ):
+
+            # 가로 방향
+            self.try_move(
+                -dy * self.speed,
+                dx * self.speed,
+                obstacles
+            )
+
+            # 그래도 안 되면 반대쪽
+            if (
+                abs(self.x - old_x) < 0.01 and
+                abs(self.y - old_y) < 0.01
+            ):
+
+                self.try_move(
+                    dy * self.speed,
+                    -dx * self.speed,
+                    obstacles
+                )
+
+    # -----------------------------------------------------
+
+    def draw(self):
+
+        pygame.draw.circle(
+            screen,
+            self.color,
+            (int(self.x), int(self.y)),
+            self.radius
+        )
+
+        # 눈
+        pygame.draw.circle(
+            screen,
+            WHITE,
+            (
+                int(self.x - 6),
+                int(self.y - 4)
+            ),
+            3
+        )
+
+        pygame.draw.circle(
+            screen,
+            WHITE,
+            (
+                int(self.x + 6),
+                int(self.y - 4)
+            ),
+            3
+        )
+
+        # 체력바
+
+        width = self.radius * 2
+
+        pygame.draw.rect(
+            screen,
+            RED,
+            (
+                self.x - self.radius,
+                self.y - self.radius - 10,
+                width,
+                4
+            )
+        )
+
+        pygame.draw.rect(
+            screen,
+            GREEN,
+            (
+                self.x - self.radius,
+                self.y - self.radius - 10,
+                width * max(
+                    self.hp / self.max_hp,
+                    0
+                ),
+                4
+            )
+        )
+
+
+# =========================================================
+# 보스 좀비
+# =========================================================
+
+class BossZombie(Zombie):
+
+    def __init__(self, x, y, wave):
+
+        super().__init__(
+            x,
+            y,
+            speed=0.8 + wave * 0.04,
+            hp=200 + wave * 40,
+            damage=2,
+            radius=35,
+            color=(180, 40, 180)
+        )
+
+    def draw(self):
+
+        pygame.draw.circle(
+            screen,
+            self.color,
+            (int(self.x), int(self.y)),
+            self.radius
+        )
+
+        # 눈
+
+        pygame.draw.circle(
+            screen,
+            RED,
+            (
+                int(self.x - 10),
+                int(self.y - 7)
+            ),
+            5
+        )
+
+        pygame.draw.circle(
+            screen,
+            RED,
+            (
+                int(self.x + 10),
+                int(self.y - 7)
+            ),
+            5
+        )
+
+        # 체력바
+
+        width = 80
+
+        pygame.draw.rect(
+            screen,
+            RED,
+            (
+                self.x - width // 2,
+                self.y - 50,
+                width,
+                7
+            )
+        )
+
+        pygame.draw.rect(
+            screen,
+            (255, 100, 255),
+            (
+                self.x - width // 2,
+                self.y - 50,
+                width * max(
+                    self.hp / self.max_hp,
+                    0
+                ),
+                7
+            )
+        )
+
+
+# =========================================================
+# 회복 아이템
+# =========================================================
+
+class HealthItem:
+
+    def __init__(self, x, y):
+
+        self.x = x
+        self.y = y
+
+        self.radius = 12
+
+    def draw(self):
+
+        pygame.draw.circle(
+            screen,
+            RED,
+            (int(self.x), int(self.y)),
+            self.radius
+        )
+
+        pygame.draw.rect(
+            screen,
+            WHITE,
+            (
+                self.x - 3,
+                self.y - 8,
+                6,
+                16
+            )
+        )
+
+        pygame.draw.rect(
+            screen,
+            WHITE,
+            (
+                self.x - 8,
+                self.y - 3,
+                16,
+                6
+            )
+        )
+
+
+# =========================================================
+# 게임
+# =========================================================
+
+class Game:
+
+    def __init__(self):
+
+        self.create_obstacles()
+
+        self.player = Player(
+            self.obstacles
+        )
+
+        self.bullets = []
+        self.zombies = []
+
+        self.particles = ParticleManager()
+
+        self.wave = 1
+        self.score = 0
+        self.coins = 0
+
+        self.game_over = False
+
+        self.shop = False
+
+        self.spawn_zombies()
+
+    # -----------------------------------------------------
+
+    def create_obstacles(self):
+
+        self.obstacles = [
+
+            Obstacle(
+                170,
+                120,
+                170,
+                35
+            ),
+
+            Obstacle(
+                560,
+                120,
+                170,
+                35
+            ),
+
+            Obstacle(
+                170,
+                445,
+                170,
+                35
+            ),
+
+            Obstacle(
+                560,
+                445,
+                170,
+                35
+            ),
+
+            Obstacle(
+                410,
+                220,
+                80,
+                160
+            )
+        ]
+
+    # -----------------------------------------------------
+
+    def random_spawn_position(self):
+
+        for _ in range(100):
+
+            side = random.randint(0, 3)
+
+            if side == 0:
+
+                x = random.randint(
+                    30,
+                    WIDTH - 30
+                )
+
+                y = 25
+
+            elif side == 1:
+
+                x = random.randint(
+                    30,
+                    WIDTH - 30
+                )
+
+                y = HEIGHT - 25
+
+            elif side == 2:
+
+                x = 25
+
+                y = random.randint(
+                    30,
+                    HEIGHT - 30
+                )
+
+            else:
+
+                x = WIDTH - 25
+
+                y = random.randint(
+                    30,
+                    HEIGHT - 30
+                )
+
+            # 플레이어와 너무 가까우면 다시
+            if math.hypot(
+                x - self.player.x,
+                y - self.player.y
+            ) < 200:
+
+                continue
+
+            if can_move(
+                x,
+                y,
+                20,
+                self.obstacles
+            ):
+
+                return x, y
+
+        return 50, 50
+
+    # -----------------------------------------------------
+
+    def spawn_zombies(self):
+
+        self.zombies.clear()
+
+        amount = 3 + self.wave * 2
+
+        for _ in range(amount):
+
+            x, y = self.random_spawn_position()
+
+            speed = 1.0 + self.wave * 0.08
+
+            hp = 30 + self.wave * 5
+
+            zombie = Zombie(
+                x,
+                y,
+                speed,
+                hp
+            )
+
+            self.zombies.append(zombie)
+
+        # 5의 배수 웨이브마다 보스
+        if self.wave % 5 == 0:
+
+            x, y = self.random_spawn_position()
+
+            self.zombies.append(
+                BossZombie(
+                    x,
+                    y,
+                    self.wave
+                )
+            )
+
+    # -----------------------------------------------------
+
+    def handle_events(self):
+
+        for event in pygame.event.get():
+
+            if event.type == pygame.QUIT:
+
+                return False
+
+            # 한 번 클릭 = 한 발
+            if event.type == pygame.MOUSEBUTTONDOWN:
+
+                if event.button == 1:
+
+                    # 게임 중
+                    if not self.game_over and not self.shop:
+
+                        mouse_x, mouse_y = pygame.mouse.get_pos()
+
+                        bullet = self.player.shoot(
+                            mouse_x,
+                            mouse_y
+                        )
+
+                        if bullet:
+
+                            self.bullets.append(
+                                bullet
+                            )
+
+                    # 상점 클릭
+                    elif self.shop:
+
+                        self.shop_click(
+                            event.pos
+                        )
+
+            if event.type == pygame.KEYDOWN:
+
+                # 게임 오버
+                if event.key == pygame.K_r:
+
+                    if self.game_over:
+
+                        self.__init__()
+
+                # 상점 열기
+                if event.key == pygame.K_b:
+
+                    if not self.game_over:
+
+                        self.shop = not self.shop
+
+        return True
+
+    # -----------------------------------------------------
+
+    def shop_click(self, pos):
+
+        x, y = pos
+
+        # 공격력 업그레이드
+        attack_rect = pygame.Rect(
+            250,
+            180,
+            400,
+            60
+        )
+
+        # 공격속도 업그레이드
+        speed_rect = pygame.Rect(
+            250,
+            260,
+            400,
+            60
+        )
+
+        # 이동속도 업그레이드
+        move_rect = pygame.Rect(
+            250,
+            340,
+            400,
+            60
+        )
+
+        # 체력 회복
+        heal_rect = pygame.Rect(
+            250,
+            420,
+            400,
+            60
+        )
+
+        # 공격력
+        if attack_rect.collidepoint(pos):
+
+            if self.coins >= 20:
+
+                self.coins -= 20
+
+                self.player.damage += 5
+
+        # 공격속도
+        elif speed_rect.collidepoint(pos):
+
+            if self.coins >= 30:
+
+                self.coins -= 30
+
+                self.player.shoot_delay = max(
+                    2,
+                    self.player.shoot_delay - 2
+                )
+
+        # 이동속도
+        elif move_rect.collidepoint(pos):
+
+            if self.coins >= 25:
+
+                self.coins -= 25
+
+                self.player.speed += 0.5
+
+        # 회복
+        elif heal_rect.collidepoint(pos):
+
+            if self.coins >= 15:
+
+                self.coins -= 15
+
+                self.player.hp = min(
+                    self.player.max_hp,
+                    self.player.hp + 30
+                )
+
+    # -----------------------------------------------------
+
+    def update(self):
+
+        if self.game_over:
+            return
+
+        # 상점 열려 있으면 게임 멈춤
+        if self.shop:
+
+            self.particles.update()
+
+            return
+
+        # 플레이어
+        self.player.update()
+
+        # 총알
+        for bullet in self.bullets:
+
+            bullet.update()
+
+        # 총알 삭제
+        self.bullets = [
+            bullet
+            for bullet in self.bullets
+            if not bullet.is_outside()
+        ]
+
+        # 좀비
+        for zombie in self.zombies:
+
+            zombie.update(
+                self.player,
+                self.obstacles
+            )
+
+        # 총알과 좀비 충돌
+        for bullet in self.bullets[:]:
+
+            # 장애물에 총알이 닿으면 제거
+            hit_wall = False
+
+            for obstacle in self.obstacles:
+
+                if obstacle.rect.collidepoint(
+                    int(bullet.x),
+                    int(bullet.y)
+                ):
+
+                    hit_wall = True
+                    break
+
+            if hit_wall:
+
+                if bullet in self.bullets:
+                    self.bullets.remove(bullet)
+
+                continue
+
+            # 좀비와 충돌
+            for zombie in self.zombies[:]:
+
+                distance = math.hypot(
+                    bullet.x - zombie.x,
+                    bullet.y - zombie.y
+                )
+
+                if distance < (
+                    bullet.radius +
+                    zombie.radius
+                ):
+
+                    zombie.hp -= bullet.damage
+
+                    if bullet in self.bullets:
+
+                        self.bullets.remove(
+                            bullet
+                        )
+
+                    self.particles.create(
+                        zombie.x,
+                        zombie.y,
+                        ORANGE,
+                        5
+                    )
+
+                    # 좀비 죽음
+                    if zombie.hp <= 0:
+
+                        self.score += 10
+
+                        # 보스는 더 많은 코인
+                        if isinstance(
+                            zombie,
+                            BossZombie
+                        ):
+
+                            self.coins += 30
+
+                            self.particles.create(
+                                zombie.x,
+                                zombie.y,
+                                (255, 0, 255),
+                                25
+                            )
+
+                        else:
+
+                            self.coins += 5
+
+                            self.particles.create(
+                                zombie.x,
+                                zombie.y,
+                                GREEN,
+                                12
+                            )
+
+                        self.zombies.remove(
+                            zombie
+                        )
+
+                    break
+
+        # 좀비와 플레이어 충돌
+        for zombie in self.zombies:
+
+            distance = math.hypot(
+                zombie.x - self.player.x,
+                zombie.y - self.player.y
+            )
+
+            if distance < (
+                zombie.radius +
+                self.player.radius
+            ):
+
+                self.player.hp -= zombie.damage
+
+                # 좀비 밀어내기
+                dx = self.player.x - zombie.x
+                dy = self.player.y - zombie.y
+
+                dist = math.hypot(dx, dy)
+
+                if dist != 0:
+
+                    self.player.x += (
+                        dx / dist * 8
+                    )
+
+                    self.player.y += (
+                        dy / dist * 8
+                    )
+
+                self.particles.create(
+                    self.player.x,
+                    self.player.y,
+                    RED,
+                    5
+                )
+
+                if self.player.hp <= 0:
+
+                    self.player.hp = 0
+
+                    self.game_over = True
+
+        # 파티클
+        self.particles.update()
+
+        # 웨이브 클리어
+        if len(self.zombies) == 0:
+
+            self.wave += 1
+
+            # 웨이브 클리어 보너스
+            self.coins += 10
+
+            # 다음 웨이브
+            self.spawn_zombies()
+
+    # -----------------------------------------------------
+
+    def draw_ui(self):
+
+        hp_text = font.render(
+            f"HP: {self.player.hp}/{self.player.max_hp}",
+            True,
+            WHITE
+        )
+
+        wave_text = font.render(
+            f"Wave: {self.wave}",
+            True,
+            WHITE
+        )
+
+        score_text = font.render(
+            f"Score: {self.score}",
+            True,
+            WHITE
+        )
+
+        coin_text = font.render(
+            f"Coins: {self.coins}",
+            True,
+            (255, 215, 0)
+        )
+
+        screen.blit(
+            hp_text,
+            (20, 15)
+        )
+
+        screen.blit(
+            wave_text,
+            (20, 45)
+        )
+
+        screen.blit(
+            score_text,
+            (20, 75)
+        )
+
+        screen.blit(
+            coin_text,
+            (20, 105)
+        )
+
+        help_text = font.render(
+            "WASD: Move   Left Click: Shoot   B: Shop",
+            True,
+            WHITE
+        )
+
+        screen.blit(
+            help_text,
+            (250, 15)
+        )
+
+    # -----------------------------------------------------
+
+    def draw_shop(self):
+
+        # 어두운 배경
+        overlay = pygame.Surface(
+            (WIDTH, HEIGHT)
+        )
+
+        overlay.set_alpha(220)
+
+        overlay.fill(BLACK)
+
+        screen.blit(
+            overlay,
+            (0, 0)
+        )
+
+        title = big_font.render(
+            "SHOP",
+            True,
+            WHITE
+        )
+
+        screen.blit(
+            title,
+            (
+                WIDTH // 2 - 70,
+                90
+            )
+        )
+
+        # 공격력
+        pygame.draw.rect(
+            screen,
+            DARK_GRAY,
+            (250, 180, 400, 60)
+        )
+
+        text = font.render(
+            "Attack Damage +5    20 Coins",
+            True,
+            WHITE
+        )
+
+        screen.blit(
+            text,
+            (280, 200)
+        )
+
+        # 공격속도
+        pygame.draw.rect(
+            screen,
+            DARK_GRAY,
+            (250, 260, 400, 60)
+        )
+
+        text = font.render(
+            "Attack Speed +     30 Coins",
+            True,
+            WHITE
+        )
+
+        screen.blit(
+            text,
+            (280, 280)
+        )
+
+        # 이동속도
+        pygame.draw.rect(
+            screen,
+            DARK_GRAY,
+            (250, 340, 400, 60)
+        )
+
+        text = font.render(
+            "Move Speed +       25 Coins",
+            True,
+            WHITE
+        )
+
+        screen.blit(
+            text,
+            (280, 360)
+        )
+
+        # 회복
+        pygame.draw.rect(
+            screen,
+            DARK_GRAY,
+            (250, 420, 400, 60)
+        )
+
+        text = font.render(
+            "Heal +30 HP         15 Coins",
+            True,
+            WHITE
+        )
+
+        screen.blit(
+            text,
+            (280, 440)
+        )
+
+        coins = font.render(
+            f"Coins: {self.coins}",
+            True,
+            (255, 215, 0)
+        )
+
+        screen.blit(
+            coins,
+            (20, 20)
+        )
+
+        close = font.render(
+            "Press B to close",
+            True,
+            WHITE
+        )
+
+        screen.blit(
+            close,
+            (20, HEIGHT - 40)
+        )
+
+    # -----------------------------------------------------
+
+    def draw(self):
+
+        screen.fill(
+            (25, 25, 25)
+        )
+
+        # 장애물
+        for obstacle in self.obstacles:
+
+            obstacle.draw()
+
+        # 플레이어
+        self.player.draw()
+
+        # 총알
+        for bullet in self.bullets:
+
+            bullet.draw()
+
+        # 좀비
+        for zombie in self.zombies:
+
+            zombie.draw()
+
+        # 파티클
+        self.particles.draw()
+
+        # UI
+        self.draw_ui()
+
+        # 조준점
+        if not self.shop:
+
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+
+            pygame.draw.circle(
+                screen,
+                WHITE,
+                (mouse_x, mouse_y),
+                8,
+                1
+            )
+
+            pygame.draw.line(
+                screen,
+                WHITE,
+                (
+                    mouse_x - 12,
+                    mouse_y
+                ),
+                (
+                    mouse_x + 12,
+                    mouse_y
+                ),
+                1
+            )
+
+            pygame.draw.line(
+                screen,
+                WHITE,
+                (
+                    mouse_x,
+                    mouse_y - 12
+                ),
+                (
+                    mouse_x,
+                    mouse_y + 12
+                ),
+                1
+            )
+
+        # 상점
+        if self.shop:
+
+            self.draw_shop()
+
+        # 게임오버
+        if self.game_over:
+
+            overlay = pygame.Surface(
+                (WIDTH, HEIGHT)
+            )
+
+            overlay.set_alpha(150)
+
+            overlay.fill(BLACK)
+
+            screen.blit(
+                overlay,
+                (0, 0)
+            )
+
+            text = big_font.render(
+                "GAME OVER",
+                True,
+                RED
+            )
+
+            screen.blit(
+                text,
+                (
+                    WIDTH // 2 - 150,
+                    HEIGHT // 2 - 50
+                )
+            )
+
+            restart = font.render(
+                "Press R to Restart",
+                True,
+                WHITE
+            )
+
+            screen.blit(
+                restart,
+                (
+                    WIDTH // 2 - 100,
+                    HEIGHT // 2 + 20
+                )
+            )
+
+        pygame.display.flip()
+
+
+# =========================================================
+# 실행
+# =========================================================
+
+game = Game()
+
+running = True
+
+while running:
+
+    running = game.handle_events()
+
+    game.update()
+
+    game.draw()
+
+    clock.tick(60)
+
+pygame.quit()
