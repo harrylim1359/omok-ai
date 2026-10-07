@@ -1,0 +1,818 @@
+import tkinter as tk
+from tkinter import messagebox
+
+
+# =========================================================
+# 기본 설정
+# =========================================================
+
+SIZE = 15
+CELL = 40
+MARGIN = 30
+
+EMPTY = 0
+BLACK = 1
+WHITE = 2
+
+
+# =========================================================
+# Player 클래스
+# =========================================================
+
+class Player:
+
+    def __init__(self, color):
+        self.color = color
+        self.bombs = 2
+        self.moves = 1
+
+    def use_bomb(self):
+        if self.bombs <= 0:
+            return False
+
+        self.bombs -= 1
+        return True
+
+    def use_move(self):
+        if self.moves <= 0:
+            return False
+
+        self.moves -= 1
+        return True
+
+    def reset(self):
+        self.bombs = 2
+        self.moves = 1
+
+
+# =========================================================
+# Board 클래스
+# =========================================================
+
+class Board:
+
+    def __init__(self):
+        self.size = SIZE
+        self.reset()
+
+    # -------------------------
+    # 보드 초기화
+    # -------------------------
+
+    def reset(self):
+        self.board = [
+            [EMPTY for _ in range(self.size)]
+            for _ in range(self.size)
+        ]
+
+    # -------------------------
+    # 좌표가 보드 안에 있는지
+    # -------------------------
+
+    def is_inside(self, row, col):
+        return (
+            0 <= row < self.size
+            and 0 <= col < self.size
+        )
+
+    # -------------------------
+    # 돌 놓기
+    # -------------------------
+
+    def place_stone(self, row, col, player):
+
+        if not self.is_inside(row, col):
+            return False
+
+        if self.board[row][col] != EMPTY:
+            return False
+
+        self.board[row][col] = player
+        return True
+
+    # -------------------------
+    # 돌 이동
+    # -------------------------
+
+    def move_stone(self, old_row, old_col, new_row, new_col, player):
+
+        if not self.is_inside(new_row, new_col):
+            return False
+
+        # 선택한 돌이 자신의 돌인지 확인
+        if self.board[old_row][old_col] != player:
+            return False
+
+        # 이동 위치가 빈칸인지 확인
+        if self.board[new_row][new_col] != EMPTY:
+            return False
+
+        self.board[old_row][old_col] = EMPTY
+        self.board[new_row][new_col] = player
+
+        return True
+
+    # -------------------------
+    # 폭탄
+    # -------------------------
+
+    def bomb(self, row, col):
+
+        for r in range(row - 1, row + 2):
+
+            for c in range(col - 1, col + 2):
+
+                if self.is_inside(r, c):
+                    self.board[r][c] = EMPTY
+
+    # -------------------------
+    # 특정 위치의 돌
+    # -------------------------
+
+    def get(self, row, col):
+        return self.board[row][col]
+
+    # -------------------------
+    # 승리 판정
+    # -------------------------
+
+    def check_win(self, row, col):
+
+        player = self.board[row][col]
+
+        if player == EMPTY:
+            return False
+
+        directions = [
+            (0, 1),     # 가로
+            (1, 0),     # 세로
+            (1, 1),     # ↘
+            (1, -1)     # ↗
+        ]
+
+        for dr, dc in directions:
+
+            count = 1
+
+            # 한쪽 방향
+            r = row + dr
+            c = col + dc
+
+            while (
+                self.is_inside(r, c)
+                and self.board[r][c] == player
+            ):
+                count += 1
+                r += dr
+                c += dc
+
+            # 반대 방향
+            r = row - dr
+            c = col - dc
+
+            while (
+                self.is_inside(r, c)
+                and self.board[r][c] == player
+            ):
+                count += 1
+                r -= dr
+                c -= dc
+
+            if count >= 5:
+                return True
+
+        return False
+
+
+# =========================================================
+# Game 클래스
+# =========================================================
+
+class Game:
+
+    def __init__(self):
+
+        self.board = Board()
+
+        self.players = {
+            BLACK: Player(BLACK),
+            WHITE: Player(WHITE)
+        }
+
+        self.current_player = BLACK
+
+        self.bomb_mode = False
+        self.move_mode = False
+
+        self.selected_stone = None
+
+        self.game_over = False
+
+    # -------------------------
+    # 현재 플레이어
+    # -------------------------
+
+    def get_current_player(self):
+        return self.players[self.current_player]
+
+    # -------------------------
+    # 일반 돌 놓기
+    # -------------------------
+
+    def place_stone(self, row, col):
+
+        if self.game_over:
+            return False
+
+        success = self.board.place_stone(
+            row,
+            col,
+            self.current_player
+        )
+
+        if not success:
+            return False
+
+        # 승리 확인
+        if self.board.check_win(row, col):
+            self.game_over = True
+            return True
+
+        self.change_turn()
+
+        return True
+
+    # -------------------------
+    # 폭탄 사용
+    # -------------------------
+
+    def use_bomb(self, row, col):
+
+        if self.game_over:
+            return False
+
+        player = self.get_current_player()
+
+        if not player.use_bomb():
+            return False
+
+        self.board.bomb(row, col)
+
+        self.change_turn()
+
+        return True
+
+    # -------------------------
+    # 돌 이동
+    # -------------------------
+
+    def move_stone(
+        self,
+        old_row,
+        old_col,
+        new_row,
+        new_col
+    ):
+
+        if self.game_over:
+            return False
+
+        player = self.get_current_player()
+
+        if not player.use_move():
+            return False
+
+        success = self.board.move_stone(
+            old_row,
+            old_col,
+            new_row,
+            new_col,
+            self.current_player
+        )
+
+        if not success:
+
+            # 이동 실패했으므로 횟수 복구
+            player.moves += 1
+
+            return False
+
+        # 이동 후 승리 확인
+        if self.board.check_win(new_row, new_col):
+            self.game_over = True
+            return True
+
+        self.change_turn()
+
+        return True
+
+    # -------------------------
+    # 턴 변경
+    # -------------------------
+
+    def change_turn(self):
+
+        if self.current_player == BLACK:
+            self.current_player = WHITE
+        else:
+            self.current_player = BLACK
+
+        self.bomb_mode = False
+        self.move_mode = False
+        self.selected_stone = None
+
+    # -------------------------
+    # 새 게임
+    # -------------------------
+
+    def reset(self):
+
+        self.board.reset()
+
+        for player in self.players.values():
+            player.reset()
+
+        self.current_player = BLACK
+
+        self.bomb_mode = False
+        self.move_mode = False
+        self.selected_stone = None
+
+        self.game_over = False
+
+
+# =========================================================
+# GUI 클래스
+# =========================================================
+
+class OmokGUI:
+
+    def __init__(self, root):
+
+        self.root = root
+
+        self.root.title("💣 폭탄 오목")
+        self.root.resizable(False, False)
+
+        self.game = Game()
+
+        self.create_widgets()
+
+        self.draw_board()
+        self.update_status()
+
+    # =====================================================
+    # GUI 생성
+    # =====================================================
+
+    def create_widgets(self):
+
+        # 제목
+        title_label = tk.Label(
+            self.root,
+            text="💣 폭탄 오목",
+            font=("Arial", 24, "bold")
+        )
+
+        title_label.pack(pady=10)
+
+        # 상태
+        self.status_label = tk.Label(
+            self.root,
+            text="",
+            font=("Arial", 13)
+        )
+
+        self.status_label.pack(pady=5)
+
+        # 바둑판
+        canvas_size = (
+            MARGIN * 2
+            + CELL * (SIZE - 1)
+        )
+
+        self.canvas = tk.Canvas(
+            self.root,
+            width=canvas_size,
+            height=canvas_size,
+            bg="#DEB887"
+        )
+
+        self.canvas.pack(
+            padx=10,
+            pady=10
+        )
+
+        self.canvas.bind(
+            "<Button-1>",
+            self.board_click
+        )
+
+        # 버튼
+        button_frame = tk.Frame(self.root)
+        button_frame.pack(pady=10)
+
+        self.bomb_btn = tk.Button(
+            button_frame,
+            text="💣 폭탄 사용",
+            font=("Arial", 12),
+            command=self.bomb_button
+        )
+
+        self.bomb_btn.pack(
+            side="left",
+            padx=5
+        )
+
+        self.move_btn = tk.Button(
+            button_frame,
+            text="🪨 돌 이동",
+            font=("Arial", 12),
+            command=self.move_button
+        )
+
+        self.move_btn.pack(
+            side="left",
+            padx=5
+        )
+
+        self.restart_btn = tk.Button(
+            button_frame,
+            text="🔄 새 게임",
+            font=("Arial", 12),
+            command=self.new_game
+        )
+
+        self.restart_btn.pack(
+            side="left",
+            padx=5
+        )
+
+        self.exit_btn = tk.Button(
+            button_frame,
+            text="❌ 종료",
+            font=("Arial", 12),
+            command=self.root.destroy
+        )
+
+        self.exit_btn.pack(
+            side="left",
+            padx=5
+        )
+
+    # =====================================================
+    # 바둑판 그리기
+    # =====================================================
+
+    def draw_board(self):
+
+        self.canvas.delete("all")
+
+        # 바둑판 선
+        for i in range(SIZE):
+
+            x = MARGIN + i * CELL
+            y = MARGIN + i * CELL
+
+            self.canvas.create_line(
+                MARGIN,
+                y,
+                MARGIN + (SIZE - 1) * CELL,
+                y
+            )
+
+            self.canvas.create_line(
+                x,
+                MARGIN,
+                x,
+                MARGIN + (SIZE - 1) * CELL
+            )
+
+        # 돌 그리기
+        for row in range(SIZE):
+
+            for col in range(SIZE):
+
+                player = self.game.board.get(
+                    row,
+                    col
+                )
+
+                if player == EMPTY:
+                    continue
+
+                x = MARGIN + col * CELL
+                y = MARGIN + row * CELL
+
+                radius = 16
+
+                if player == BLACK:
+
+                    self.canvas.create_oval(
+                        x - radius,
+                        y - radius,
+                        x + radius,
+                        y + radius,
+                        fill="black"
+                    )
+
+                elif player == WHITE:
+
+                    self.canvas.create_oval(
+                        x - radius,
+                        y - radius,
+                        x + radius,
+                        y + radius,
+                        fill="white",
+                        outline="black"
+                    )
+
+        # 선택된 돌 표시
+        if self.game.selected_stone is not None:
+
+            row, col = self.game.selected_stone
+
+            x = MARGIN + col * CELL
+            y = MARGIN + row * CELL
+
+            self.canvas.create_oval(
+                x - 20,
+                y - 20,
+                x + 20,
+                y + 20,
+                outline="red",
+                width=3
+            )
+
+    # =====================================================
+    # 상태 표시
+    # =====================================================
+
+    def update_status(self):
+
+        player = self.game.get_current_player()
+
+        if self.game.current_player == BLACK:
+            player_text = "⚫ 흑돌 차례"
+        else:
+            player_text = "⚪ 백돌 차례"
+
+        self.status_label.config(
+            text=(
+                f"{player_text}   |   "
+                f"💣 폭탄: {player.bombs}개   |   "
+                f"🪨 이동: {player.moves}회"
+            )
+        )
+
+    # =====================================================
+    # 바둑판 클릭
+    # =====================================================
+
+    def board_click(self, event):
+
+        if self.game.game_over:
+            return
+
+        col = round(
+            (event.x - MARGIN) / CELL
+        )
+
+        row = round(
+            (event.y - MARGIN) / CELL
+        )
+
+        if not self.game.board.is_inside(row, col):
+            return
+
+        # =================================================
+        # 폭탄 모드
+        # =================================================
+
+        if self.game.bomb_mode:
+
+            player = self.game.get_current_player()
+
+            if player.bombs <= 0:
+
+                messagebox.showinfo(
+                    "폭탄",
+                    "폭탄이 없습니다."
+                )
+
+                self.game.bomb_mode = False
+                return
+
+            self.game.use_bomb(row, col)
+
+            self.draw_board()
+            self.update_status()
+
+            return
+
+        # =================================================
+        # 돌 이동 모드
+        # =================================================
+
+        if self.game.move_mode:
+
+            # 아직 돌을 선택하지 않은 경우
+            if self.game.selected_stone is None:
+
+                if (
+                    self.game.board.get(row, col)
+                    != self.game.current_player
+                ):
+
+                    messagebox.showwarning(
+                        "돌 이동",
+                        "자신의 돌을 선택해주세요."
+                    )
+
+                    return
+
+                self.game.selected_stone = (
+                    row,
+                    col
+                )
+
+                self.draw_board()
+
+                self.status_label.config(
+                    text="🪨 이동할 위치를 클릭하세요."
+                )
+
+                return
+
+            # 선택한 돌
+            old_row, old_col = (
+                self.game.selected_stone
+            )
+
+            # 같은 위치
+            if (
+                old_row == row
+                and old_col == col
+            ):
+
+                messagebox.showinfo(
+                    "돌 이동",
+                    "다른 빈칸을 선택해주세요."
+                )
+
+                return
+
+            # 빈칸이 아닌 경우
+            if self.game.board.get(row, col) != EMPTY:
+
+                messagebox.showwarning(
+                    "돌 이동",
+                    "빈칸으로 이동해야 합니다."
+                )
+
+                return
+
+            success = self.game.move_stone(
+                old_row,
+                old_col,
+                row,
+                col
+            )
+
+            if success:
+
+                self.draw_board()
+
+                if self.game.game_over:
+                    self.show_winner()
+                    return
+
+                self.update_status()
+
+            return
+
+        # =================================================
+        # 일반 돌 놓기
+        # =================================================
+
+        if self.game.board.get(row, col) != EMPTY:
+
+            messagebox.showwarning(
+                "돌 놓기",
+                "이미 돌이 있는 자리입니다."
+            )
+
+            return
+
+        success = self.game.place_stone(
+            row,
+            col
+        )
+
+        if success:
+
+            self.draw_board()
+
+            if self.game.game_over:
+                self.show_winner()
+                return
+
+            self.update_status()
+
+    # =====================================================
+    # 폭탄 버튼
+    # =====================================================
+
+    def bomb_button(self):
+
+        if self.game.game_over:
+            return
+
+        player = self.game.get_current_player()
+
+        if player.bombs <= 0:
+
+            messagebox.showinfo(
+                "폭탄",
+                "폭탄이 없습니다!"
+            )
+
+            return
+
+        self.game.bomb_mode = True
+        self.game.move_mode = False
+        self.game.selected_stone = None
+
+        self.status_label.config(
+            text="💣 폭탄을 터뜨릴 위치를 클릭하세요!"
+        )
+
+        self.draw_board()
+
+    # =====================================================
+    # 돌 이동 버튼
+    # =====================================================
+
+    def move_button(self):
+
+        if self.game.game_over:
+            return
+
+        player = self.game.get_current_player()
+
+        if player.moves <= 0:
+
+            messagebox.showinfo(
+                "돌 이동",
+                "돌 이동을 이미 사용했습니다!"
+            )
+
+            return
+
+        self.game.move_mode = True
+        self.game.bomb_mode = False
+        self.game.selected_stone = None
+
+        self.status_label.config(
+            text="🪨 이동할 자신의 돌을 클릭하세요."
+        )
+
+        self.draw_board()
+
+    # =====================================================
+    # 승자 표시
+    # =====================================================
+
+    def show_winner(self):
+
+        if self.game.current_player == BLACK:
+            winner = "⚫ 흑돌"
+        else:
+            winner = "⚪ 백돌"
+
+        messagebox.showinfo(
+            "게임 종료",
+            f"{winner} 승리!"
+        )
+
+    # =====================================================
+    # 새 게임
+    # =====================================================
+
+    def new_game(self):
+
+        self.game.reset()
+
+        self.draw_board()
+        self.update_status()
+
+
+# =========================================================
+# 프로그램 시작
+# =========================================================
+
+root = tk.Tk()
+
+app = OmokGUI(root)
+
+root.mainloop()
