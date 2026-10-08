@@ -564,9 +564,9 @@ class Zombie(Monster):
                 (wave - 1) * 0.15
             )
 
-            hp = (
-                30 +
-                (wave - 1) * 10
+            hp = math.ceil(
+                30 + 
+                (wave/2+(wave/2)**2) * 10
             )
 
             damage = (
@@ -576,7 +576,7 @@ class Zombie(Monster):
 
             color = (60, 200, 70)
 
-            coin_reward = 5
+            coin_reward = 5+2*(wave-1)
 
         # ==================================================
         # Speed
@@ -591,9 +591,9 @@ class Zombie(Monster):
                 (wave - 1) * 0.20
             )
 
-            hp = (
+            hp = math.ceil(
                 15 +
-                (wave - 1) * 5
+                (wave/2+(wave/2)**2) * 5
             )
 
             damage = (
@@ -603,7 +603,7 @@ class Zombie(Monster):
 
             color = (255, 220, 50)
 
-            coin_reward = 8
+            coin_reward = 8+3*(wave-1)
 
         # ==================================================
         # Tank
@@ -618,9 +618,9 @@ class Zombie(Monster):
                 (wave - 1) * 0.08
             )
 
-            hp = (
+            hp = math.ceil(
                 80 +
-                (wave - 1) * 20
+                (wave/2+(wave/2)**2) * 20
             )
 
             damage = (
@@ -630,7 +630,7 @@ class Zombie(Monster):
 
             color = (220, 60, 60)
 
-            coin_reward = 12
+            coin_reward = 12+4*(wave-1)
 
         # ==================================================
         # Boss
@@ -645,9 +645,9 @@ class Zombie(Monster):
                 (wave - 1) * 0.10
             )
 
-            hp = (
+            hp = math.ceil(
                 250 +
-                (wave - 1) * 50
+                (wave/2+(wave/2)**2) * 50
             )
 
             damage = (
@@ -657,7 +657,7 @@ class Zombie(Monster):
 
             color = (170, 50, 220)
 
-            coin_reward = 50
+            coin_reward = 50+15*(wave-1)
 
         super().__init__(
             x=x,
